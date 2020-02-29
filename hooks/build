@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+
+case "${DOCKER_TAG}" in
+	5.0.1|latest|*)
+		PHP_VERSION=7.3
+		PMA_VERSION=5.0.1
+		;;
+esac
+
+arg_string=''
+
+if [ ! -z "${PHP_VERSION}" ]; then
+    arg_string="${arg_string} --build-arg PHP_VERSION=${PHP_VERSION}"
+fi
+
+if [ ! -z "${PMA_VERSION}" ]; then
+    arg_string="${arg_string} --build-arg PMA_VERSION=${PMA_VERSION}"
+fi
+
+echo "docker build ${arg_string} -t ${IMAGE_NAME} ."
+
+docker build ${arg_string} -t ${IMAGE_NAME} .

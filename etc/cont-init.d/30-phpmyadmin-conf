@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv /bin/sh
+
+# pass configuration environment variables to phpmyadmin without
+# exposing the entire container environment
+ENV_INI_FILE="/etc/phpmyadmin/env.ini"
+
+for var in $(env | grep PMA_); do
+	sed -i "s|${var%=*}\s*=\s*.*|${var%=*} = ${var#*=}|g" $ENV_INI_FILE
+done
