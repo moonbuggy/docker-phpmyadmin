@@ -1,5 +1,5 @@
 ARG PHP_VERSION=7.3
-ARG PMA_VERSION=5.0.1
+ARG PMA_VERSION=5.0.3
 
 ARG PMA_CONFIG_PATH=/etc/phpmyadmin/
 
@@ -15,7 +15,7 @@ WORKDIR /build
 RUN apk --no-cache add \
 		curl
 
-RUN curl -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.xz \
+RUN curl -sS -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.xz \
 	&& tar -xf phpMyAdmin.tar.xz --strip 1 \
 	&& rm -f phpMyAdmin.tar.xz \
 	&& rm -rf \
@@ -25,7 +25,6 @@ RUN curl -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${PMA_V
 		RELEASE-DATE-${PMA_VERSION} \
 		setup/ \
 		test/ \
-	# use /etc/phpmyadmin for config files so we can mount a volume easily.
 	&& sed -e "s|(CONFIG_DIR',\s*)(.*)\)|\1'${PMA_CONFIG_PATH}')|" -E -i libraries/vendor_config.php \
 	&& chown -R 1000:1000 /build
 
@@ -66,5 +65,4 @@ RUN add-contenv \
 	&& mkdir -p /var/nginx/client_body_temp \
 	&& mkdir /sessions
 
-# Expose the port nginx is reachable on
 EXPOSE 8080

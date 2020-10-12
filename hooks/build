@@ -1,22 +1,13 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
-case "${DOCKER_TAG}" in
-	5.0.1|latest|*)
-		PHP_VERSION=7.3
-		PMA_VERSION=5.0.1
-		;;
-esac
+. hooks/env
 
 arg_string=''
 
-if [ ! -z "${PHP_VERSION}" ]; then
-    arg_string="${arg_string} --build-arg PHP_VERSION=${PHP_VERSION}"
-fi
+[ ! -z "${PHP_VERSION}" ] && arg_string="${arg_string} --build-arg PHP_VERSION=${PHP_VERSION}"
+[ ! -z "${TARGET_VERSION}" ] && arg_string="${arg_string} --build-arg PMA_VERSION=${TARGET_VERSION}"
 
-if [ ! -z "${PMA_VERSION}" ]; then
-    arg_string="${arg_string} --build-arg PMA_VERSION=${PMA_VERSION}"
-fi
+build_cmd=(docker build ${arg_string} -t ${IMAGE_NAME} .)
 
-echo "docker build ${arg_string} -t ${IMAGE_NAME} ."
-
-docker build ${arg_string} -t ${IMAGE_NAME} .
+printf '\n---\n%s\n---\n\n' "${build_cmd[*]}"
+"${build_cmd[@]}"

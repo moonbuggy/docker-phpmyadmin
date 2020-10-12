@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+. hooks/env
+
+## get the repo and tag strings
+#
+image_repo=${IMAGE_NAME%:*}
+image_tag=${IMAGE_NAME#*:}
+
+## generate and apply extra tags
+#
+tags=()
+if [ "${image_tag}" = "latest" ]; then
+	tags+=("${LATEST_VERSION}")
+elif [ "${image_tag}" = "${LATEST_VERSION}" ]; then
+	tags+=('latest')
+fi
+
+## push the tags
+#
+push_tags()	{
+	for tag in ${tags[@]}; do
+		echo '---'
+		printf 'Adding tag: %s:%s\n' "${image_repo}" "${tag}"
+		docker tag $IMAGE_NAME ${image_repo}:${tag}
+		docker push ${image_repo}:${tag} | grep digest
+	done
+	echo '---'
+}
+
+push_tags

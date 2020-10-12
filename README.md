@@ -92,4 +92,4 @@ networks:
 
 GitHub: https://github.com/moonbuggy/docker-phpmyadmin 
 
-Docker Hub:https://hub.docker.com/r/moonbuggy2000/phpmyadmin
+Docker Hub: https://hub.docker.com/r/moonbuggy2000/phpmyadmin

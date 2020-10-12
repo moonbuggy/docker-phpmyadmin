@@ -1,0 +1,52 @@
+GIT_REPO="phpmyadmin/phpmyadmin"
+
+## repo-specific conversion of tags and versions
+#
+version_to_tag() {
+    echo "RELEASE_${1//./$'_'}"
+}
+
+tag_to_version() {
+    echo "$(echo ${1} | sed -r 's|[a-zA-Z]+_([0-9_]+)|\1|g' | tr '_' '.')"
+}
+
+## get_tag_data <tag> <output variable name>
+#
+get_tag_data () {
+	local temp_data=$( curl -s -w "%{http_code}\n" "https://api.github.com/repos/${GIT_REPO}/releases/${1}" )
+	local http_code=$(echo "$temp_data" | tail -n1)
+	if [ "$http_code" != "200" ]; then
+		echo "HTTP Error: $http_code"
+		return 1
+	fi
+	printf -v "$2" '%s' "$(echo "$temp_data" | awk '/.*(tag_name|tarball_url).*/ {print}')"
+}
+
+## get the latest tag data and set LATEST_VERSION
+#
+get_tag_data "latest" "latest_tag_data"
+LATEST_TAG=$(echo $latest_tag_data | sed -r 's/.*tag_name"\W+"v?([^"]+)".*/\1/')
+LATEST_VERSION=$(tag_to_version "$LATEST_TAG")
+
+## get target version tag data
+#
+if [ "$DOCKER_TAG" = "latest" ]; then
+	tag_data=$latest_tag_data
+	TARGET_TAG=${LATEST_TAG}
+	TARGET_VERSION=${LATEST_VERSION}
+else
+	get_tag_data "tags/$(version_to_tag ${DOCKER_TAG})" "tag_data"
+	TARGET_TAG="$(echo $tag_data | sed -r 's/.*tag_name"\W+"v?([^"]+)".*/\1/')"
+	TARGET_VERSION=$(tag_to_version "$TARGET_TAG")
+fi
+
+if [ -z "${tag_data}" ]; then
+	echo "Error: Could not match tag '${DOCKER_TAG}' with a Git repo tag."
+	exit 1
+fi
+
+TARGET_TARBALL="$(echo $tag_data | sed -r 's/.*tarball_url"\W+"v?([^"]+)".*/\1/')"
+
+echo '---'
+printf '%-10s%-8s%-16s\n' 'latest:' "${LATEST_VERSION}" "${LATEST_TAG}"
+printf '%-10s%-8s%-16s%s\n' 'target:' "${TARGET_VERSION}" "${TARGET_TAG}" "${TARGET_TARBALL}"
