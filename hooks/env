@@ -1,52 +1,118 @@
-GIT_REPO="phpmyadmin/phpmyadmin"
+MANIFEST_TOOL_REPO="estesp/manifest-tool"
 
-## repo-specific conversion of tags and versions
-#
-version_to_tag() {
-    echo "RELEASE_${1//./$'_'}"
-}
+DATA_DIR="./.build_data"
+ARCH_YAML="arch.yaml"
+CONFIG_YAML="${DATA_DIR}/config.${DOCKER_TAG}.yaml"
 
-tag_to_version() {
-    echo "$(echo ${1} | sed -r 's|[a-zA-Z]+_([0-9_]+)|\1|g' | tr '_' '.')"
-}
+CACHE_EXPIRY=14400
 
-## get_tag_data <tag> <output variable name>
-#
-get_tag_data () {
-	local temp_data=$( curl -s -w "%{http_code}\n" "https://api.github.com/repos/${GIT_REPO}/releases/${1}" )
-	local http_code=$(echo "$temp_data" | tail -n1)
-	if [ "$http_code" != "200" ]; then
-		echo "HTTP Error: $http_code"
-		return 1
+[ ! -d "${DATA_DIR}" ] && mkdir -p "${DATA_DIR}"
+
+## import config for this repo
+. "repo.conf" || { echo 'No repo.conf!'; exit 1; }
+
+## handling writing and printing of parameters
+#	add_param       <value> <key>
+#	print_param     <value> <desc>
+#	add_print_param <value> <key> <desc>
+add_param () { echo "${2}: ${1}" >> "${CONFIG_YAML}"; declare -g "${2}=${1}"; }
+print_param () { printf '%-20s %-8s\n' "${2}" "${1}"; }
+add_print_param () { add_param "${1}" "${2}"; print_param "${1}" "${3:-${2}}"; }
+
+## curl the provided URL, handle errors and cache
+# get_url <URL>
+get_url () {
+	local page_data
+	local cache_file
+
+	cache_file="${DATA_DIR}/$(echo "${1}" | md5sum | cut -d' ' -f1)"
+
+	if [ -f "${cache_file}" ] && [ "$(( $(date +"%s") - $(date -r "${cache_file}" +"%s") ))" -lt "${CACHE_EXPIRY}" ]; then
+		cat "${cache_file}"
+	else
+		page_data="$(curl -s -w "%{http_code}\n" "${1}")"
+		http_code="${page_data:(-3)}"
+		if [ "${http_code}" = "200" ]; then
+			echo "${page_data%???}" | tee "${cache_file}"
+		else
+			echo "HTTP Error: ${http_code}"
+			return 1
+		fi
 	fi
-	printf -v "$2" '%s' "$(echo "$temp_data" | awk '/.*(tag_name|tarball_url).*/ {print}')"
 }
 
-## get the latest tag data and set LATEST_VERSION
+# git_api_data <repo> <request>
+git_api_data () {	get_url "https://api.github.com/repos/${1}/${2}"; }
+
+# git_api_element <repo> <request> <tag>
+git_api_element () { git_api_data "${1}" "${2}" | sed -En 's|.*"'"${3}"'"\W+"([^"]+)".*|\1|p'; }
+
+# git_latest_release <repo> <tag_name>
+git_latest_release () { git_api_element "${1}" 'releases/latest' "${2:-tag_name}"; }
+
+# docker_api_tags <repo>
+docker_api_tags () { 
+	local repo && repo="${1}"
+	[[ "${repo}" != *"/"* ]] && repo="library/${repo}"
+	get_url "https://registry.hub.docker.com/v2/repositories/${repo}/tags?page_size=100"
+}
+
+# docker_api_tag_names <repo>
+docker_api_tag_names () { docker_api_tags "${1}" | sed 's/,/,\n/g' | sed -En 's|.*"name"\W+"([^"]*)".*|\1|p' | sort -uV; }
+
+# docker_api_latest <repo>
+docker_api_latest () { docker_api_tag_names "${1}" | grep '\.' | cut -d'-' -f1 | sort -uV | tail -n1; }
+
+## parse YAML configuration
 #
-get_tag_data "latest" "latest_tag_data"
-LATEST_TAG=$(echo $latest_tag_data | sed -r 's/.*tag_name"\W+"v?([^"]+)".*/\1/')
-LATEST_VERSION=$(tag_to_version "$LATEST_TAG")
+parse_yaml () {
+	local prefix && prefix="${2}"
+	local s && s='[[:space:]]*' w='[a-zA-Z0-9_]*'
+	local fs && fs=$(echo @|tr @ '\034')
+	sed -ne "s|^\($s\):|\1|" \
+		-e "s|^\(${s}\)\(${w}\)${s}:${s}[\"']\(.*\)[\"']${s}\$|\1${fs}\2${fs}\3|p" \
+		-e "s|^\(${s}\)\(${w}\)${s}:${s}\(.*\)${s}\$|\1${fs}\2${fs}\3|p" "${1}" |
+		awk -F"${fs}" '{
+			indent = length($1)/2;
+			vname[indent] = $2;
+			for (i in vname) {if (i > indent) {delete vname[i]}}
+			if (length($3) > 0) {
+				vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+				printf("%s%s%s=%s\n", "'"$prefix"'",vn, $2, $3);
+			}
+		}'
+}
 
-## get target version tag data
-#
-if [ "$DOCKER_TAG" = "latest" ]; then
-	tag_data=$latest_tag_data
-	TARGET_TAG=${LATEST_TAG}
-	TARGET_VERSION=${LATEST_VERSION}
-else
-	get_tag_data "tags/$(version_to_tag ${DOCKER_TAG})" "tag_data"
-	TARGET_TAG="$(echo $tag_data | sed -r 's/.*tag_name"\W+"v?([^"]+)".*/\1/')"
-	TARGET_VERSION=$(tag_to_version "$TARGET_TAG")
-fi
+## get manifest-tool
+get_manifest_tool () {
+	local existing_tool && existing_tool="$(command -v manifest-tool)"
+	if [ -n "${existing_tool}" ]; then
+		echo "${existing_tool}"
+	else
+		if [ ! -f manifest-tool ]; then
+			LATEST_MANIFEST_TOOL="$(git_latest_release "${MANIFEST_TOOL_REPO}")"
+			curl -sLo "manifest-tool" "https://github.com/${MANIFEST_TOOL_REPO}/releases/download/${LATEST_MANIFEST_TOOL}/manifest-tool-linux-amd64"
+		fi
+		chmod a+x "manifest-tool"
+		echo './manifest-tool'
+	fi
+}
 
-if [ -z "${tag_data}" ]; then
-	echo "Error: Could not match tag '${DOCKER_TAG}' with a Git repo tag."
-	exit 1
-fi
+# ifFunc <func>
+ifFunc () { type "${1}" 2> /dev/null | sed "s/${1}//" | grep -qwi function; }
 
-TARGET_TARBALL="$(echo $tag_data | sed -r 's/.*tarball_url"\W+"v?([^"]+)".*/\1/')"
+# ifFuncExec <func> <args>
+ifFuncExec () { ifFunc "${1}" && "${@}"; }
 
-echo '---'
-printf '%-10s%-8s%-16s\n' 'latest:' "${LATEST_VERSION}" "${LATEST_TAG}"
-printf '%-10s%-8s%-16s%s\n' 'target:' "${TARGET_VERSION}" "${TARGET_TAG}" "${TARGET_TARBALL}"
+# ifFuncSetVar <var> <func> <args>
+ifFuncSetVar () {
+	var="${1}" &&	shift
+	value=$(ifFuncExec "${@}")
+	if [ -n "${value}" ]; then declare -g "${var}=${value}"; else false; fi
+}
+
+## read any existing config
+[ -f "${CONFIG_YAML}" ] \
+	&& while read -r line; do declare "${line}"; done < <(parse_yaml "${CONFIG_YAML}")
+
+ifFuncExec env_end

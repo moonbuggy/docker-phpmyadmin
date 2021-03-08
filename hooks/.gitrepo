@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = git@github.com:moonbuggy/docker-hooks.git
+	branch = master
+	commit = 5cbfb5297d0ace0e71206b12abef0f3a8f3118f5
+	parent = 8c3430fd8b821d49a147cf452df561a6cb9f99b8
+	method = merge
+	cmdver = 0.4.3
