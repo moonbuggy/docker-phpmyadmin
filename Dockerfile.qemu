@@ -4,6 +4,8 @@ ARG FROM_IMAGE="moonbuggy2000/alpine-s6-nginx-php-fpm:php${PHP_VERSION}"
 ARG PMA_VERSION="5.1.0"
 ARG PMA_CONFIG_PATH="/etc/phpmyadmin/"
 
+ARG QEMU_ARCH="arm"
+
 # prepare files
 #
 FROM moonbuggy2000/fetcher:latest AS fetcher
@@ -26,9 +28,13 @@ RUN curl -sS -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${P
 	&& sed -e "s|(CONFIG_DIR',\s*)(.*)\)|\1'${PMA_CONFIG_PATH}')|" -E -i libraries/vendor_config.php \
 	&& chown -R 1000:1000 /build
 
-# build the final image
+## build the image
 #
-FROM "${FROM_IMAGE}"
+FROM multiarch/qemu-user-static:x86_64-${QEMU_ARCH} AS qemu
+FROM ${FROM_IMAGE}
+
+ARG QEMU_ARCH
+COPY --from=qemu /usr/bin/qemu-${QEMU_ARCH}-static /usr/bin
 
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
@@ -37,8 +43,8 @@ COPY --from=fetcher build/ ${WEB_ROOT}/
 COPY ./etc/ /etc/
 
 RUN add-contenv \
-		PMA_VERSION="${PMA_VERSION}" \
-		PMA_CONFIG_PATH="${PMA_CONFIG_PATH}" \
+		PMA_VERSION=${PMA_VERSION} \
+		PMA_CONFIG_PATH=${PMA_CONFIG_PATH} \
 	&& apk --no-cache add \
 		curl \
 		libzip \

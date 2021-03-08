@@ -3,3 +3,7 @@
 *.md
 Dockerfile*
 hooks/
+manifest*
+arch.yaml
+config.yaml
+build.sh
