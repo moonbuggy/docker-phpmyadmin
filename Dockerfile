@@ -1,21 +1,22 @@
 ARG PHP_VERSION="7.3"
-ARG FROM_IMAGE="moonbuggy2000/alpine-s6-nginx-php-fpm:php${PHP_VERSION}"
+ARG FROM_IMAGE="moonbuggy2000/alpine-s6-nginx-php-fpm:${PHP_VERSION}"
 
 ARG PMA_VERSION="5.1.0"
 ARG PMA_CONFIG_PATH="/etc/phpmyadmin/"
+
+ARG TARGET_ARCH_TAG="amd64"
 
 # prepare files
 #
 FROM moonbuggy2000/fetcher:latest AS fetcher
 
-ARG PMA_VERSION
-ARG PMA_CONFIG_PATH
-
 WORKDIR /build
 
-RUN curl -sS -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.xz \
-	&& tar -xf phpMyAdmin.tar.xz --strip 1 \
-	&& rm -f phpMyAdmin.tar.xz \
+ARG PMA_VERSION
+ARG PMA_CONFIG_PATH
+RUN mkdir /s6/ \
+	&& wget --no-check-certificate -qO- "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.xz" \
+		| tar --strip 1 -xJf - \
 	&& rm -rf \
 		composer.json \
 		examples/ \
@@ -23,19 +24,25 @@ RUN curl -sS -o phpMyAdmin.tar.xz -L https://files.phpmyadmin.net/phpMyAdmin/${P
 		RELEASE-DATE-${PMA_VERSION} \
 		setup/ \
 		test/ \
+		>/dev/null 2>&1 \
 	&& sed -e "s|(CONFIG_DIR',\s*)(.*)\)|\1'${PMA_CONFIG_PATH}')|" -E -i libraries/vendor_config.php \
 	&& chown -R 1000:1000 /build
 
-# build the final image
+## build the image
 #
-FROM "${FROM_IMAGE}"
+FROM "${FROM_IMAGE}" AS builder
+
+# QEMU static binaries from pre_build
+ARG QEMU_DIR
+ARG QEMU_ARCH=""
+COPY _dummyfile "${QEMU_DIR}/qemu-${QEMU_ARCH}-static*" /usr/bin/
+
+ARG WEB_ROOT="/var/www/html"
+COPY --from=fetcher build/ "${WEB_ROOT}/"
+COPY ./etc/ /etc/
 
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
-
-COPY --from=fetcher build/ ${WEB_ROOT}/
-COPY ./etc/ /etc/
-
 RUN add-contenv \
 		PMA_VERSION="${PMA_VERSION}" \
 		PMA_CONFIG_PATH="${PMA_CONFIG_PATH}" \
@@ -64,4 +71,18 @@ RUN add-contenv \
 	&& mkdir -p /var/nginx/client_body_temp \
 	&& mkdir /sessions
 
-EXPOSE 8080
+RUN rm -f "/usr/bin/qemu-${QEMU_ARCH}-static" > /dev/null 2>&1
+
+## drop the QEMU binaries
+#
+FROM "moonbuggy2000/scratch:${TARGET_ARCH_TAG}"
+
+COPY --from=builder / /
+
+ARG NGINX_PORT="8080"
+EXPOSE "${NGINX_PORT}"
+
+ENTRYPOINT ["/init"]
+
+HEALTHCHECK --start-period=10s --timeout=10s \
+	CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/fpm-ping && echo 'okay' || exit 1
