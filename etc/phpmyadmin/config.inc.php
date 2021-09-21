@@ -134,6 +134,9 @@ $i--;
 $cfg['UploadDir'] = '';
 $cfg['SaveDir'] = '';
 
+# default limit of 300 is too short for database imports
+$cfg['ExecTimeLimit'] = 0;
+
 /* Include User Defined Settings Hook */
 if (file_exists('/etc/phpmyadmin/config.user.inc.php')) {
     include('/etc/phpmyadmin/config.user.inc.php');

@@ -1,4 +1,4 @@
-ARG PHP_VERSION="7.3"
+ARG PHP_VERSION="7.4"
 ARG FROM_IMAGE="moonbuggy2000/alpine-s6-nginx-php-fpm:${PHP_VERSION}"
 
 ARG PMA_VERSION="5.1.0"
@@ -37,16 +37,9 @@ ARG QEMU_DIR
 ARG QEMU_ARCH=""
 COPY _dummyfile "${QEMU_DIR}/qemu-${QEMU_ARCH}-static*" /usr/bin/
 
-ARG WEB_ROOT="/var/www/html"
-COPY --from=fetcher build/ "${WEB_ROOT}/"
-COPY ./etc/ /etc/
-
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
-RUN add-contenv \
-		PMA_VERSION="${PMA_VERSION}" \
-		PMA_CONFIG_PATH="${PMA_CONFIG_PATH}" \
-	&& apk --no-cache add \
+RUN apk --no-cache add \
 		curl \
 		libzip \
 		php7-bz2 \
@@ -65,13 +58,22 @@ RUN add-contenv \
 		php7-xml \
 		php7-xmlreader \
 		php7-zip \
-		php7-zlib \
-	&& sed -i "s/BLOWFISH_SECRET/$(tr -dc 'a-zA-Z0-9~!@#%^&*_()+}{?><;.,[]=-' < /dev/urandom | fold -w 32 | head -n 1)/" /etc/phpmyadmin/config.secret.inc.php \
+		php7-zlib
+
+ARG WEB_ROOT="/var/www/html"
+COPY --from=fetcher build/ "${WEB_ROOT}/"
+COPY ./etc /etc
+
+RUN sed -e "s/BLOWFISH_SECRET/$(tr -dc 'a-zA-Z0-9~!@#%^&*_()+}{?><;.,[]=-' < /dev/urandom | fold -w 32 | head -n 1)/" \
+		-i /etc/phpmyadmin/config.secret.inc.php \
 	&& touch /etc/phpmyadmin/config.user.inc.php \
-	&& mkdir -p /var/nginx/client_body_temp \
-	&& mkdir /sessions
+	&& mkdir /sessions \
+	&& add-contenv \
+			PMA_VERSION="${PMA_VERSION}" \
+			PMA_CONFIG_PATH="${PMA_CONFIG_PATH}"
 
 RUN rm -f "/usr/bin/qemu-${QEMU_ARCH}-static" > /dev/null 2>&1
+
 
 ## drop the QEMU binaries
 #
