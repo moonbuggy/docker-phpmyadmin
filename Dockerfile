@@ -1,21 +1,23 @@
+# syntax = docker/dockerfile:1.4.0
+
 ARG PHP_VERSION="7.4"
 ARG FROM_IMAGE="moonbuggy2000/alpine-s6-nginx-php-fpm:${PHP_VERSION}"
 
-ARG PMA_VERSION="5.1.0"
-ARG PMA_CONFIG_PATH="/etc/phpmyadmin/"
-
-ARG TARGET_ARCH_TAG="amd64"
+ARG PMA_VERSION="5.2.0"
+ARG PMA_CONFIG_PATH="/etc/phpmyadmin"
 
 # prepare files
 #
-FROM moonbuggy2000/fetcher:latest AS fetcher
+ARG BUILDPLATFORM="linux/amd64"
+FROM --platform="${BUILDPLATFORM}" moonbuggy2000/fetcher:latest AS fetcher
 
 WORKDIR /build
 
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
+ARG PMA_LANGUAGES="all-languages"
 RUN mkdir /s6/ \
-	&& wget --no-check-certificate -qO- "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.xz" \
+	&& wget --no-check-certificate -qO- "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-${PMA_LANGUAGES}.tar.xz" \
 		| tar --strip 1 -xJf - \
 	&& rm -rf \
 		composer.json \
@@ -25,17 +27,19 @@ RUN mkdir /s6/ \
 		setup/ \
 		test/ \
 		>/dev/null 2>&1 \
-	&& sed -e "s|(CONFIG_DIR',\s*)(.*)\)|\1'${PMA_CONFIG_PATH}')|" -E -i libraries/vendor_config.php \
 	&& chown -R 1000:1000 /build
+
+# the config file changes syntax at PMA v5.2.0
+RUN if [ "$(echo "5.2.0 ${PMA_VERSION}" | xargs -n1 | sort -uV | tail -n1)" = "${PMA_VERSION}" ]; then \
+			sed -e "s|('configFile'\s+=>\s+).*|\1'${PMA_CONFIG_PATH}/config.inc.php',|" -E -i libraries/vendor_config.php; \
+		else \
+			sed -e "s|(CONFIG_DIR',\s*)(.*)\)|\1'${PMA_CONFIG_PATH}/')|" -E -i libraries/vendor_config.php; \
+		fi
+
 
 ## build the image
 #
 FROM "${FROM_IMAGE}" AS builder
-
-# QEMU static binaries from pre_build
-ARG QEMU_DIR
-ARG QEMU_ARCH=""
-COPY _dummyfile "${QEMU_DIR}/qemu-${QEMU_ARCH}-static*" /usr/bin/
 
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
@@ -62,29 +66,21 @@ RUN apk --no-cache add \
 
 ARG WEB_ROOT="/var/www/html"
 COPY --from=fetcher build/ "${WEB_ROOT}/"
-COPY ./etc /etc
+COPY root/ /
 
 RUN sed -e "s/BLOWFISH_SECRET/$(tr -dc 'a-zA-Z0-9~!@#%^&*_()+}{?><;.,[]=-' < /dev/urandom | fold -w 32 | head -n 1)/" \
 		-i /etc/phpmyadmin/config.secret.inc.php \
 	&& touch /etc/phpmyadmin/config.user.inc.php \
 	&& mkdir /sessions \
+	&& mkdir /certs \
 	&& add-contenv \
 			PMA_VERSION="${PMA_VERSION}" \
 			PMA_CONFIG_PATH="${PMA_CONFIG_PATH}"
 
-RUN rm -f "/usr/bin/qemu-${QEMU_ARCH}-static" > /dev/null 2>&1
-
-
-## drop the QEMU binaries
-#
-FROM "moonbuggy2000/scratch:${TARGET_ARCH_TAG}"
-
-COPY --from=builder / /
-
 ARG NGINX_PORT="8080"
+ENV NGINX_PORT="${NGINX_PORT}" \
+	S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+
 EXPOSE "${NGINX_PORT}"
 
 ENTRYPOINT ["/init"]
-
-HEALTHCHECK --start-period=10s --timeout=10s \
-	CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/fpm-ping && echo 'okay' || exit 1

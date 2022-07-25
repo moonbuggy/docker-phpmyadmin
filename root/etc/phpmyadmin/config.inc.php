@@ -21,7 +21,15 @@ $vars = array(
     'PMA_PMADB',
     'PMA_CONTROLUSER',
     'PMA_CONTROLPASS',
-    'PMA_QUERYHISTORYDB'
+    'PMA_QUERYHISTORYDB',
+    'PMA_SSL',
+    'PMA_SSL_KEY',
+    'PMA_SSL_CERT',
+    'PMA_SSL_CA',
+    'PMA_SSL_CA_PATH',
+    'PMA_SSL_CIPHERS',
+    'PMA_SSL_VERIFY',
+    'PMA_CONSOLE_DARKTHEME'
 );
 
 $env_array = parse_ini_file("/etc/phpmyadmin/env.ini");
@@ -119,11 +127,38 @@ for ($i = 1; isset($hosts[$i - 1]); $i++) {
     }
     $cfg['Servers'][$i]['compress'] = false;
     $cfg['Servers'][$i]['AllowNoPassword'] = true;
+    /* SSL */
+    if (isset($_ENV['PMA_SSL'])) {
+      $cfg['Servers'][$i]['ssl'] = $_ENV['PMA_SSL'];
+    }
+    if (isset($_ENV['PMA_SSL_KEY'])) {
+      $cfg['Servers'][$i]['ssl_key'] = $_ENV['PMA_KEY'];
+    }
+    if (isset($_ENV['PMA_SSL_CERT'])) {
+      $cfg['Servers'][$i]['ssl_cert'] = $_ENV['PMA_SSL_CERT'];
+    }
+    if (isset($_ENV['PMA_SSL_CA'])) {
+      $cfg['Servers'][$i]['ssl_ca'] = $_ENV['PMA_SSL_CA'];
+    }
+    if (isset($_ENV['PMA_SSL_CA_PATH'])) {
+      $cfg['Servers'][$i]['ssl_ca_path'] = $_ENV['PMA_SSL_CA_PATH'];
+    }
+    if (isset($_ENV['PMA_SSL_CIPHERS'])) {
+      $cfg['Servers'][$i]['ssl_ciphers'] = $_ENV['PMA_SSL_CIPHERS'];
+    }
+    if (isset($_ENV['PMA_SSL_VERIFY'])) {
+      $cfg['Servers'][$i]['ssl_verify'] = $_ENV['PMA_SSL_VERIFY'];
+    }
 }
 for ($i = 1; isset($sockets[$i - 1]); $i++) {
     $cfg['Servers'][$i]['socket'] = $sockets[$i - 1];
     $cfg['Servers'][$i]['host'] = 'localhost';
 }
+
+if (isset($_ENV['PMA_CONSOLE_DARKTHEME'])) {
+  $cfg['Console']['DarkTheme'] = $_ENV['PMA_CONSOLE_DARKTHEME'];
+}
+
 /*
  * Revert back to last configured server to make
  * it easier in config.user.inc.php

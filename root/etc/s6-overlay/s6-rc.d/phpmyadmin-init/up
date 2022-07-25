@@ -1,0 +1,20 @@
+with-contenv
+
+define ENV_INI_FILE "/etc/phpmyadmin/env.ini"
+
+foreground {
+  forbacktickx var { pipeline { env } grep PMA_ }
+    importas var var
+    multidefine -d"=" $var { key value } sed -i "s|${key}\\s*=\\s*.*|${key} = ${value}|g" $ENV_INI_FILE
+}
+
+importas PHP_PACKAGE PHP_PACKAGE
+foreground { sed -E \
+  -e "s|^\\s?pm.max_children\\s.*|pm.max_children = 10|" \
+  -i "/etc/${PHP_PACKAGE}/php-fpm.d/www.conf" }
+
+foreground { sed -E \
+  -e "s|^(max_execution_time).*|\\1 = 600|" \
+  -e "s|^(upload_max_filesize).*|\\1 = 100M|" \
+  -e "s|^(post_max_size).*|\\1 = 100M|" \
+  -i "/etc/${PHP_PACKAGE}/php.ini" }
