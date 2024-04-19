@@ -8,6 +8,6 @@
 DOCKER_REPO="${DOCKER_REPO:-moonbuggy2000/phpmyadmin}"
 
 all_tags='latest english'
-default_tag='latest'
+default_tag='latest english'
 
 . "hooks/.build.sh"

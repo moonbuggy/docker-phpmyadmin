@@ -43,7 +43,15 @@ FROM "${FROM_IMAGE}" AS builder
 
 ARG PMA_VERSION
 ARG PMA_CONFIG_PATH
-RUN apk --no-cache add \
+# use a local APK caching proxy, if one is provided
+ARG APK_PROXY=""
+RUN if [ ! -z "${APK_PROXY}" ]; then \
+		alpine_minor_ver="$(grep -o 'VERSION_ID.*' /etc/os-release | grep -oE '([0-9]+\.[0-9]+)')"; \
+    mv /etc/apk/repositories /etc/apk/repositories.bak; \
+		echo "${APK_PROXY}/alpine/v${alpine_minor_ver}/main" >/etc/apk/repositories; \
+		echo "${APK_PROXY}/alpine/v${alpine_minor_ver}/community" >>/etc/apk/repositories; \
+	fi \
+	&& apk --no-cache add \
 		curl \
 		libzip \
 		php7-bz2 \
@@ -62,7 +70,8 @@ RUN apk --no-cache add \
 		php7-xml \
 		php7-xmlreader \
 		php7-zip \
-		php7-zlib
+		php7-zlib \
+  && (mv /etc/apk/repositories.bak /etc/apk/repositories || true)
 
 ARG WEB_ROOT="/var/www/html"
 COPY --from=fetcher build/ "${WEB_ROOT}/"
